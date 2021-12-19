@@ -7,8 +7,8 @@
 
     Notes:
         - Currently supports retrieving COVID-19 data from Singapore only
-        - Extracted data is written into new csv file 'covid19_singapore.csv'
-        - Please backup file and/or ensure file is not used in other projects as this file will be overwritten
+        - Extracted data is written into new csv file 'covid19_singapore.csv' within the same directory
+        - Please backup file and/or ensure file is not directly used in other projects as this file will be overwritten
 """
 
 from datetime import datetime
