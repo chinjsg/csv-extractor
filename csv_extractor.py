@@ -23,6 +23,8 @@ import os
 
 # 14-column header (latest as of 5 Feb, 2022)
 header = ['Date', 'FIPS', 'Admin2', 'Province_State', 'Country_Region', 'Last_Update', 'Lat', 'Long_', 'Confirmed', 'Deaths', 'Recovered', 'Active', 'Combined_Key', 'Incidence_Rate', 'Case-Fatality_Ratio']
+
+# Index of the Country_Region column in each of 6-8-12-14 column formats
 country_index = {
     6: 1,
     8: 1,
@@ -30,7 +32,7 @@ country_index = {
     14: 3
 }
 
-support = {'US': {'Arizona': ['Pima']}, 'Singapore': {}}
+target = {'US': {'Arizona': ['Pima']}, 'Singapore': {}}
 
 def format_datestr(datestr):
     """
@@ -95,13 +97,32 @@ def append_contents(writer, filenames, file_url):
             print('There are more than 14 columns and program needs to be updated. Exiting...')
             sys.exit(-1)
 
+        # FUTURE: To add support for older data, where province_state column included cityname and state abbreviation. This should only be relevant to data before 03-22-2022
+
         for row in contents[1:]:
             # These two lines skip "additional" empty rows that appear when iterating through certain csv files. Does not affect data.
             if len(row) == 0 or row == None:
                 continue
 
+            isTarget = False
             index = country_index[len(row)]
-            if row[index] == 'Singapore':
+            country = row[index]
+            if country in target.keys():
+                if len(target[country]) == 0:
+                    # For countries with no Province_state
+                    isTarget = True
+                else:
+                    province_state = row[index-1]
+                    if province_state in target[country].keys():
+                        if country == "US":
+                            # County name
+                            county =  row[index-2]
+                            if county in target[country][province_state]:
+                                isTarget = True
+                        else:
+                            isTarget = True
+
+            if isTarget:
                 row = update_format(row, len(col_names), fname.split('.')[0])
                 writer.writerow(row)
 
