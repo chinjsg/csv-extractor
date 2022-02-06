@@ -11,58 +11,66 @@
         - Two options: Generate new csv or update previous created csv
 """
 
+
+
+
 from datetime import datetime
+from fileinput import filename
 import requests
 import csv
 import sys
 import os
 
-def create_dict(columns, is_new):
-    """
-    Creates a dictionary to store indexes of columns of interest in the csv files
-    Parameters:
-        columns: a list of column headers (first row of csv file)
-        is_new: a boolean indicating the format of csv file (old format has less columns/information)
+# 14-column header (latest as of 5 Feb, 2022)
+header = ['Date', 'FIPS', 'Admin2', 'Province_State', 'Country_Region', 'Last_Update', 'Lat', 'Long_', 'Confirmed', 'Deaths', 'Recovered', 'Active', 'Combined_Key', 'Incidence_Rate', 'Case-Fatality_Ratio']
+country_index = {
+    6: 1,
+    8: 1,
+    12: 3,
+    14: 3
+}
 
-    Returns:
-        The column index dictionary for reference
+support = {'US': {'Arizona': ['Pima']}, 'Singapore': {}}
+
+def format_datestr(datestr):
     """
-    index_dict = {}
-    if is_new:
-        index_dict['Country_Region'] = columns.index('Country_Region')
-        index_dict['Active'] = columns.index('Active')
+    Format a date string to match mm-dd-YYYY and fill in leading zeroes
+    """
+    if '/' in datestr:
+        datestr = datestr.split('/')
+    elif '-' in datestr:
+        datestr = datestr.split('-')
+    datestr[0] = datestr[0].zfill(2)
+    datestr[1] = datestr[1].zfill(2)
+
+    return '-'.join(datestr)
+
+def update_format(row, cols, datestr):
+    """
+    Handle two early formats that vary significantly.
+    This method simply swaps the columns around to match the current format
+
+    Note: There are a total of 4 different formats gathered from all csv files. 
+    Each format has 6, 8, 12, 14 columns respectively, where 6 and 8 is out of order, while 12 differs by an addition of two columns at the end, and 14 being the one we want to match.
+    """
+    if cols >= 12:
+        new_row = [datestr] + row
     else:
-        index_dict['Country_Region'] = columns.index('Country/Region')
+        new_row = [None] * 15
 
-    # Common columns for both format types    
-    index_dict['Confirmed'] = columns.index('Confirmed')
-    index_dict['Deaths'] = columns.index('Deaths')
-    index_dict['Recovered'] = columns.index('Recovered')
+        # Arrange the columns to match latest 14-columns format
+        new_row[0] = datestr
+        new_row[2] = row[0]
+        new_row[4] = row[1]
+        new_row[5] = row[2]
+        new_row[8] = row[3]
+        new_row[9] = row[4]
+        new_row[10] = row[5]
+        if cols == 8:
+            new_row[6] = row[6]
+            new_row[7] = row[7]
 
-    return index_dict
-
-def process(row, indexes, datestr):
-    """
-    Creates a dictionary to store indexes of columns of interest in the csv files
-    Parameters:
-        row: the row currently being read from the csv file
-        indexes: the column index dictionary for accessing the columns of interest
-        datestr: a string representing the date for this row data
-
-    Returns:
-        A formatted row as a list to be written in a csv file
-        Contains the columns: Date, Country_Region, Confirmed, Deaths, Recovered, Active
-    """
-    country = row[indexes['Country_Region']]
-    confirmed = row[indexes['Confirmed']]
-    deaths = row[indexes['Deaths']]
-    recovered = row[indexes['Recovered']]
-
-    active = ''
-    if 'Active' in indexes.keys():
-        active = row[indexes['Active']]
-
-    return [datestr, country, confirmed, deaths, recovered, active]
+    return new_row
 
 def append_contents(writer, filenames, file_url):
     """
@@ -76,29 +84,32 @@ def append_contents(writer, filenames, file_url):
     for fname in filenames:
         print(fname)
         furl = file_url + fname
+
         response = requests.get(furl, timeout=5)
         response_decoded = [line.decode('utf-8') for line in response.iter_lines()]
         contents = list(csv.reader(response_decoded))
-        
+
         # Get column names and determine old/new format of file
-        column_names = contents[0]
-        format_new = False
-        if len(column_names) > 8:
-            format_new = True
+        col_names = contents[0]
+        if (len(col_names) > 14):
+            print('There are more than 14 columns and program needs to be updated. Exiting...')
+            sys.exit(-1)
 
-        column_index = create_dict(column_names, format_new)
+        for row in contents[1:]:
+            # These two lines skip "additional" empty rows that appear when iterating through certain csv files. Does not affect data.
+            if len(row) == 0 or row == None:
+                continue
 
-        # Write row to the csv file
-        for row in contents:
-            if row[column_index['Country_Region']] == 'Singapore':
-                record = process(row, column_index, fname.split('.')[0])
-                writer.writerow(record)
+            index = country_index[len(row)]
+            if row[index] == 'Singapore':
+                row = update_format(row, len(col_names), fname.split('.')[0])
+                writer.writerow(row)
 
 def main():
     url = "https://api.github.com/repos/CSSEGISandData/COVID-19/contents/csse_covid_19_data/csse_covid_19_daily_reports"
     file_url = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_daily_reports/"
+    target_filename = "cases.csv"
     filenames = []
-
 
     # User prompt selection
     prompt = "Choose method by enter the corresponding number:\n1) Generate new CSV file\n2) Append existing CSV file\n"
@@ -106,7 +117,6 @@ def main():
     while choice not in ('1', '2'):
         print("Invalid option. Please enter again:")
         choice = input(prompt)
-
 
     try:
         response = requests.get(url, timeout=10)
@@ -131,26 +141,30 @@ def main():
     filenames.sort(key = lambda fname: datetime.strptime(fname.split('.')[:1][0], '%m-%d-%Y'))
 
     if choice == '1':
-        with open(os.path.join(sys.path[0], 'covid19_singapore_copy.csv'), 'w', newline='') as f:
+        with open(os.path.join(sys.path[0], target_filename), 'w', newline='') as f:
             # Create the csv writer and write column headers
             writer = csv.writer(f)
-            writer.writerow(['Date', 'Country_Region','Confirmed', 'Deaths', 'Recovered', 'Active'])
+            writer.writerow(header)
             append_contents(writer, filenames, file_url)
 
     elif choice == '2':
         # Identify last recorded date and append newest
-        with open(os.path.join(sys.path[0], 'covid19_singapore_copy.csv'), "r") as csvfile:
+        with open(os.path.join(sys.path[0], target_filename), "r") as csvfile:
             csvreader = csv.reader(csvfile)
             for line in csvreader:
                 pass
-        last_date_str = line[0] + '.csv'
+
+        last_date_str = format_datestr(line[0]) + '.csv'
         index = filenames.index(last_date_str)
         filenames = filenames[index+1:]
-
-        with open(os.path.join(sys.path[0], 'covid19_singapore_copy.csv'), 'a', newline='') as f:
-            # Create the csv writer
-            writer = csv.writer(f)
-            append_contents(writer, filenames, file_url)
+        
+        if len(filenames) == 0:
+            print("Already up to date")
+        else:
+            with open(os.path.join(sys.path[0], target_filename), 'a', newline='') as f:
+                # Create the csv writer
+                writer = csv.writer(f)
+                append_contents(writer, filenames, file_url)
     else:
         print('Something went wrong')
         sys.exit(-1)
