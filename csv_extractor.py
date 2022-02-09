@@ -6,16 +6,15 @@
     https://github.com/CSSEGISandData/COVID-19
 
     Notes:
-        - Currently supports retrieving COVID-19 data from Singapore only
-        - Extracted data is written into new csv file 'covid19_singapore.csv' within the same directory
-        - Two options: Generate new csv or update previous created csv
+        - Currently supports retrieving COVID-19 data from Singapore and Pima County, Arizona, US only
+        - Extracted data is written into a new csv file 'cases.csv' within the same directory
+        - Two options: Generate new csv or update previously created csv
 """
 
 
 
 
 from datetime import datetime
-from fileinput import filename
 import requests
 import csv
 import sys
@@ -91,7 +90,7 @@ def append_contents(writer, filenames, file_url):
         response_decoded = [line.decode('utf-8') for line in response.iter_lines()]
         contents = list(csv.reader(response_decoded))
 
-        # Get column names and determine old/new format of file
+        # Check columns are at a maximum of 14 columns
         col_names = contents[0]
         if (len(col_names) > 14):
             print('There are more than 14 columns and program needs to be updated. Exiting...')
